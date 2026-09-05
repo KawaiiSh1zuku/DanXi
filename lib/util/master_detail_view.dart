@@ -23,6 +23,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_platform_widgets/flutter_platform_widgets.dart';
 
 GlobalKey<NavigatorState>? navigatorGlobalKey;
+final ValueNotifier<bool> mainNavigatorExpanded = ValueNotifier(false);
 
 class PlatformMasterDetailApp extends StatelessWidget {
   final RouteFactory? onGenerateRoute;
@@ -74,43 +75,54 @@ class PlatformMasterDetailApp extends StatelessWidget {
     if (!isTablet(context)) {
       return masterNavigatorWidget;
     }
+    final Widget detailNavigatorWidget = Navigator(
+      key: detailNavigatorKey,
+      onGenerateRoute: onGenerateRoute,
+      initialRoute: '/placeholder',
+      observers: [HeroController()],
+    );
     return Container(
       color: Theme.of(context).colorScheme.surface,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.start,
-        children: <Widget>[
-          PlatformWidget(
-            material: (_, __) => SizedBox(
-                width: kTabletMasterContainerWidth,
-                height: MediaQuery.of(context).size.height,
-                child: masterNavigatorWidget),
-            // Dismiss the shadow border on Cupertino
-            cupertino: (_, __) => Container(
-              clipBehavior: Clip.hardEdge,
-              decoration: BoxDecoration(
-                  border: Border(
-                      right: BorderSide(
-                          width: 1, color: Theme.of(context).dividerColor))),
-              width: kTabletMasterContainerWidth,
-              height: MediaQuery.of(context).size.height,
-              child: masterNavigatorWidget,
-            ),
-          ),
-          Container(
-            // Set an empty BoxDecoration to dismiss the shadow border on Cupertino
-            decoration: const BoxDecoration(),
-            clipBehavior: Clip.hardEdge,
-            width:
-                MediaQuery.of(context).size.width - kTabletMasterContainerWidth,
-            height: MediaQuery.of(context).size.height,
-            child: Navigator(
-              key: detailNavigatorKey,
-              onGenerateRoute: onGenerateRoute,
-              initialRoute: '/placeholder',
-              observers: [HeroController()],
-            ),
-          ),
-        ],
+      child: ValueListenableBuilder<bool>(
+        valueListenable: mainNavigatorExpanded,
+        builder: (context, expanded, _) => LayoutBuilder(
+          builder: (context, constraints) {
+            final double normalMasterWidth = PlatformX.isDesktop
+                ? kDesktopMasterContainerWidth
+                : kTabletMasterContainerWidth;
+            final double masterWidth =
+                expanded ? constraints.maxWidth : normalMasterWidth;
+
+            return Stack(children: [
+              Positioned(
+                left: masterWidth,
+                top: 0,
+                right: 0,
+                bottom: 0,
+                child: ClipRect(child: detailNavigatorWidget),
+              ),
+              Positioned(
+                left: 0,
+                top: 0,
+                width: masterWidth,
+                bottom: 0,
+                child: PlatformWidget(
+                  material: (_, __) => masterNavigatorWidget,
+                  // Dismiss the shadow border on Cupertino.
+                  cupertino: (_, __) => Container(
+                    clipBehavior: Clip.hardEdge,
+                    decoration: BoxDecoration(
+                        border: Border(
+                            right: BorderSide(
+                                width: expanded ? 0 : 1,
+                                color: Theme.of(context).dividerColor))),
+                    child: masterNavigatorWidget,
+                  ),
+                ),
+              ),
+            ]);
+          },
+        ),
       ),
     );
   }

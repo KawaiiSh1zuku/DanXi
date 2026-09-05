@@ -38,10 +38,11 @@ class ScheduleView extends StatefulWidget {
   final TimeNow today;
   final int showingWeek;
   final OnTapCourseCallback? tapCallback;
+  final bool fillAvailableSpace;
 
   const ScheduleView(
       this.laneEventsList, this.timetableStyle, this.today, this.showingWeek,
-      {super.key, this.tapCallback});
+      {super.key, this.tapCallback, this.fillAvailableSpace = false});
 
   @override
   ScheduleViewState createState() => ScheduleViewState();
@@ -52,6 +53,7 @@ class ScheduleViewState extends State<ScheduleView> {
 
   @override
   Widget build(BuildContext context) {
+    _maxSlot = 0;
     Widget table;
     for (var laneEvent in widget.laneEventsList) {
       for (var event in laneEvent.events) {
@@ -61,14 +63,16 @@ class ScheduleViewState extends State<ScheduleView> {
     int cols = widget.laneEventsList.length + 1, rows = _maxSlot + 2;
     table = LayoutGrid(
       columnSizes: List.filled(cols, 1.fr),
-      rowSizes: List.filled(rows, auto),
-      children: _buildTable(cols, rows),
+      rowSizes: List.filled(rows, widget.fillAvailableSpace ? 1.fr : auto),
+      children: _buildTable(cols, rows,
+          preserveCellAspectRatio: !widget.fillAvailableSpace),
     );
     return MediaQuery.removePadding(
         context: context, removeTop: true, child: table);
   }
 
-  List<Widget> _buildTable(int cols, int rows) {
+  List<Widget> _buildTable(int cols, int rows,
+      {required bool preserveCellAspectRatio}) {
     double ratio = kRatio * (DateTime.daysPerWeek + 1) / cols;
 
     List<Widget?> result = List.generate(
@@ -79,12 +83,14 @@ class ScheduleViewState extends State<ScheduleView> {
               decoration: BoxDecoration(
                   color: Theme.of(context).hintColor.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(4)),
-            ).withRatio(ratio).withGridPlacement(
+            )
+                .withRatio(ratio, enabled: preserveCellAspectRatio)
+                .withGridPlacement(
                 rowStart: index ~/ cols, columnStart: index % cols));
 
     // Build corner
     result[0] = const SizedBox()
-        .withRatio(ratio)
+        .withRatio(ratio, enabled: preserveCellAspectRatio)
         .withGridPlacement(columnStart: 0, rowStart: 0);
 
     // Build time indicator
@@ -112,7 +118,9 @@ class ScheduleViewState extends State<ScheduleView> {
             style: TextStyle(fontSize: 10, color: Theme.of(context).hintColor),
           )
         ],
-      )).withRatio(ratio).withGridPlacement(columnStart: 0, rowStart: slot + 1);
+      ))
+          .withRatio(ratio, enabled: preserveCellAspectRatio)
+          .withGridPlacement(columnStart: 0, rowStart: slot + 1);
     }
 
     // Build day indicator & courses
@@ -144,12 +152,15 @@ class ScheduleViewState extends State<ScheduleView> {
                 : Text(DateFormat.Md().format(date))
           ],
         ),
-      ).withRatio(ratio).withGridPlacement(columnStart: day + 1, rowStart: 0);
+      )
+          .withRatio(ratio, enabled: preserveCellAspectRatio)
+          .withGridPlacement(columnStart: day + 1, rowStart: 0);
 
       convertToBlock(widget.laneEventsList[day].events).forEach((element) {
         result[1 + day + cols * (element.firstSlot + 1)] =
             _buildScheduleBlock(element)
-                .withRatio(ratio / element.slotSpan)
+                .withRatio(ratio / element.slotSpan,
+                    enabled: preserveCellAspectRatio)
                 .withGridPlacement(
                     columnStart: 1 + day,
                     rowStart: element.firstSlot + 1,
@@ -260,6 +271,11 @@ class ScheduleViewState extends State<ScheduleView> {
                     0.5
                 ? Colors.black
                 : Colors.white);
+    final courseName = AutoSizeText(course.courseName!,
+        minFontSize: widget.fillAvailableSpace ? 9 : 12,
+        maxLines: widget.fillAvailableSpace ? 2 : 4,
+        overflow: TextOverflow.ellipsis,
+        style: textStyle?.copyWith(fontWeight: FontWeight.bold));
     return Container(
       margin: const EdgeInsets.all(2),
       padding: const EdgeInsets.all(2),
@@ -275,16 +291,18 @@ class ScheduleViewState extends State<ScheduleView> {
           const SizedBox(
             height: 2,
           ),
-          AutoSizeText(course.courseName!,
-              minFontSize: 12,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: textStyle?.copyWith(fontWeight: FontWeight.bold)),
-          const SizedBox(
-            height: 4,
-          ),
+          if (widget.fillAvailableSpace)
+            Expanded(child: courseName)
+          else
+            courseName,
+          SizedBox(height: widget.fillAvailableSpace ? 2 : 4),
           AutoSizeText(course.roomName ?? "",
-              minFontSize: 10, style: textStyle),
+              minFontSize: widget.fillAvailableSpace ? 8 : 10,
+              maxLines: widget.fillAvailableSpace ? 1 : null,
+              overflow: widget.fillAvailableSpace
+                  ? TextOverflow.ellipsis
+                  : TextOverflow.clip,
+              style: textStyle),
         ],
       ),
     );
@@ -292,10 +310,12 @@ class ScheduleViewState extends State<ScheduleView> {
 }
 
 extension WidgetEx on Widget {
-  Widget withRatio(double aspectRatio) => AspectRatio(
-        aspectRatio: aspectRatio,
-        child: this,
-      );
+  Widget withRatio(double aspectRatio, {bool enabled = true}) => enabled
+      ? AspectRatio(
+          aspectRatio: aspectRatio,
+          child: this,
+        )
+      : this;
 }
 
 class ScheduleBlock {

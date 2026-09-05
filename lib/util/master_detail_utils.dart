@@ -18,6 +18,9 @@
 import 'package:flutter/widgets.dart';
 
 const kTabletMasterContainerWidth = 370.0;
+const kDesktopNavigationRailWidth = 80.0;
+const kDesktopMasterContainerWidth =
+    kTabletMasterContainerWidth + kDesktopNavigationRailWidth;
 
 bool isTablet(BuildContext context) {
   // A tablet view (i.e. dual-pane layout) is defined as a device with a screen width of 840dp or greater.

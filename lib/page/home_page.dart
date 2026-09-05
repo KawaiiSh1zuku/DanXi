@@ -41,6 +41,7 @@ import 'package:dan_xi/test/test.dart';
 import 'package:dan_xi/util/browser_util.dart';
 import 'package:dan_xi/util/flutter_app.dart';
 import 'package:dan_xi/util/master_detail_view.dart';
+import 'package:dan_xi/util/master_detail_utils.dart';
 import 'package:dan_xi/util/noticing.dart';
 import 'package:dan_xi/util/platform_universal.dart';
 import 'package:dan_xi/util/public_extension_methods.dart';
@@ -152,6 +153,14 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
       if (info != null)
         TimetableSubPage(key: timetablePageKey),
     ];
+    if (_subpage.isEmpty) {
+      mainNavigatorExpanded.value = false;
+    } else {
+      if (_pageIndex.value >= _subpage.length) {
+        _pageIndex.value = _subpage.length - 1;
+      }
+      _updateMasterNavigatorExpansion(_pageIndex.value);
+    }
   }
 
   @override
@@ -166,6 +175,8 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _screenshotSubscription?.cancel();
     _noScreenshot.stopScreenshotListening();
     _noScreenshot.stopScreenRecordingListening();
+    mainNavigatorExpanded.value = false;
+    _pageIndex.dispose();
     super.dispose();
   }
 
@@ -730,6 +741,76 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
     StateProvider.isLoggedIn.value = SettingsProvider.getInstance().isLoggedIn;
   }
 
+  void _updateMasterNavigatorExpansion(int pageIndex) {
+    final bool shouldExpand = PlatformX.isDesktop &&
+        pageIndex < _subpage.length &&
+        _subpage[pageIndex] is TimetableSubPage;
+    if (mainNavigatorExpanded.value != shouldExpand) {
+      mainNavigatorExpanded.value = shouldExpand;
+    }
+  }
+
+  List<BottomNavigationBarItem> _buildNavigationItems(
+      BuildContext context, PersonInfo? info) {
+    return [
+      // Don't show Dashboard in visitor mode
+      if (info != null)
+        BottomNavigationBarItem(
+          icon: PlatformX.isMaterial(context)
+              ? const Icon(Icons.dashboard)
+              : const Icon(CupertinoIcons.square_stack_3d_up_fill),
+          label: S.of(context).dashboard,
+        ),
+      if (!SettingsProvider.getInstance().hideHole)
+        BottomNavigationBarItem(
+          icon: PlatformX.isMaterial(context)
+              ? const Icon(Icons.forum)
+              : const Icon(CupertinoIcons.text_bubble),
+          label: S.of(context).forum,
+        ),
+      BottomNavigationBarItem(
+        icon: PlatformX.isMaterial(context)
+            ? const Icon(Icons.egg_alt)
+            : const Icon(CupertinoIcons.book),
+        label: S.of(context).curriculum,
+      ),
+      // Don't show Timetable in visitor mode
+      if (info != null)
+        BottomNavigationBarItem(
+          icon: PlatformX.isMaterial(context)
+              ? const Icon(Icons.calendar_today)
+              : const Icon(CupertinoIcons.calendar),
+          label: S.of(context).timetable,
+        ),
+      if (info == null)
+        BottomNavigationBarItem(
+          icon: PlatformX.isMaterial(context)
+              ? const Icon(Icons.settings)
+              : const Icon(CupertinoIcons.gear_alt),
+          label: S.of(context).settings,
+        ),
+    ];
+  }
+
+  void _onNavigationItemSelected(
+      int index, int pageIndex, PersonInfo? info) {
+    if (info == null && index >= _subpage.length) {
+      smartNavigatorPush(context, '/settings');
+      return;
+    }
+    if (index != pageIndex) {
+      HapticFeedbackUtil.medium();
+      // Dispatch [SubpageViewState] events.
+      _subpage[pageIndex]
+          .onViewStateChanged(context, SubpageViewState.INVISIBLE);
+      _subpage[index].onViewStateChanged(context, SubpageViewState.VISIBLE);
+      _pageIndex.value = index;
+      _updateMasterNavigatorExpansion(index);
+    } else {
+      _subpage[index].onDoubleTapOnTab();
+    }
+  }
+
   Widget _buildBody(Widget title) {
     // Show debug button for [Dio].
     if (PlatformX.isDebugMode(SettingsProvider.getInstance().preferences)) {
@@ -742,8 +823,10 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
       providers: [ValueListenableProvider.value(value: _pageIndex)],
       child: PageWithTab(
         child: Consumer<int>(
-          builder: (BuildContext context, pageIndex, _) => PlatformScaffold(
-            body: LazyLoadIndexedStack(
+          builder: (BuildContext context, pageIndex, _) {
+            final navigationItems = _buildNavigationItems(context, info);
+            final pageScaffold = PlatformScaffold(
+              body: LazyLoadIndexedStack(
               index: pageIndex,
               children: _subpage,
             ),
@@ -751,66 +834,48 @@ class HomePageState extends State<HomePage> with WidgetsBindingObserver {
             // 2021-5-19 @w568w:
             // Override the builder to prevent the repeatedly built states on iOS.
             // I don't know why it works...
-            cupertinoTabChildBuilder: (_, index) => _subpage[index],
-            bottomNavBar: PlatformNavBarM3(
-              items: [
-                // Don't show Dashboard in visitor mode
-                if (info != null)
-                  BottomNavigationBarItem(
-                    icon: PlatformX.isMaterial(context)
-                        ? const Icon(Icons.dashboard)
-                        : const Icon(CupertinoIcons.square_stack_3d_up_fill),
-                    label: S.of(context).dashboard,
+              cupertinoTabChildBuilder: (_, index) => _subpage[index],
+              bottomNavBar: PlatformX.isDesktop
+                  ? null
+                  : PlatformNavBarM3(
+                      items: navigationItems,
+                      currentIndex: pageIndex,
+                      itemChanged: (index) => _onNavigationItemSelected(
+                          index, pageIndex, info),
+                    ),
+            );
+
+            if (!PlatformX.isDesktop) return pageScaffold;
+
+            return Row(children: [
+              SizedBox(
+                width: kDesktopNavigationRailWidth,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surface,
+                    border: Border(
+                        right: BorderSide(
+                            color: Theme.of(context).dividerColor)),
                   ),
-                if (!SettingsProvider.getInstance().hideHole)
-                  BottomNavigationBarItem(
-                    icon: PlatformX.isMaterial(context)
-                        ? const Icon(Icons.forum)
-                        : const Icon(CupertinoIcons.text_bubble),
-                    label: S.of(context).forum,
+                  child: NavigationRail(
+                    minWidth: kDesktopNavigationRailWidth,
+                    labelType: NavigationRailLabelType.all,
+                    selectedIndex: pageIndex,
+                    destinations: navigationItems
+                        .map((item) => NavigationRailDestination(
+                              icon: item.icon,
+                              selectedIcon: item.activeIcon,
+                              label: Text(item.label!),
+                            ))
+                        .toList(),
+                    onDestinationSelected: (index) =>
+                        _onNavigationItemSelected(index, pageIndex, info),
                   ),
-                BottomNavigationBarItem(
-                  icon: PlatformX.isMaterial(context)
-                      ? const Icon(Icons.egg_alt)
-                      : const Icon(CupertinoIcons.book),
-                  label: S.of(context).curriculum,
                 ),
-                // Don't show Timetable in visitor mode
-                if (info != null)
-                  BottomNavigationBarItem(
-                    icon: PlatformX.isMaterial(context)
-                        ? const Icon(Icons.calendar_today)
-                        : const Icon(CupertinoIcons.calendar),
-                    label: S.of(context).timetable,
-                  ),
-                if (info == null)
-                  BottomNavigationBarItem(
-                    icon: PlatformX.isMaterial(context)
-                        ? const Icon(Icons.settings)
-                        : const Icon(CupertinoIcons.gear_alt),
-                    label: S.of(context).settings,
-                  ),
-              ],
-              currentIndex: pageIndex,
-              itemChanged: (index) {
-                if (info == null && index >= _subpage.length) {
-                  smartNavigatorPush(context, '/settings');
-                  return;
-                }
-                if (index != pageIndex) {
-                  HapticFeedbackUtil.medium();
-                  // Dispatch [SubpageViewState] events.
-                  _subpage[pageIndex]
-                      .onViewStateChanged(context, SubpageViewState.INVISIBLE);
-                  _subpage[index]
-                      .onViewStateChanged(context, SubpageViewState.VISIBLE);
-                  _pageIndex.value = index;
-                } else {
-                  _subpage[index].onDoubleTapOnTab();
-                }
-              },
-            ),
-          ),
+              ),
+              Expanded(child: pageScaffold),
+            ]);
+          },
         ),
       ),
     );

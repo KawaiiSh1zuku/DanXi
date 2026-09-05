@@ -550,59 +550,106 @@ class TimetableSubPageState extends PlatformSubpageState<TimetableSubPage> {
 
     final List<DayEvents> scheduleData = _table!
         .toDayEvents(_showingTime!.week, compact: TableDisplayType.STANDARD);
-    return RefreshIndicator(
-      key: indicatorKey,
-      edgeOffset: MediaQuery.of(context).padding.top,
-      color: Theme.of(context).colorScheme.secondary,
-      backgroundColor: Theme.of(context).dialogTheme.backgroundColor,
-      onRefresh: () async {
-        forceLoadFromRemote = true;
-        HapticFeedback.mediumImpact();
-        await refresh();
+    final weekSelector = Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        PlatformIconButton(
+          icon: const Icon(Icons.chevron_left),
+          onPressed: _showingTime!.week > 0 ? goToPrev : null,
+        ),
+        Text(S.of(context).week(_showingTime!.week)),
+        PlatformIconButton(
+          icon: const Icon(Icons.chevron_right),
+          onPressed:
+              _showingTime!.week < TimeTable.MAX_WEEK ? goToNext : null,
+        )
+      ],
+    );
+    final lastUpdated = Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(S.of(context).timetable_last_updated),
+      lastUpdatedTime == null
+          ? Text(S.of(context).timetable_no_last_updated)
+          : Text(DateFormat("yyyy-MM-dd HH:mm").format(lastUpdatedTime))
+    ]);
+    final semesterStartDate = Row(mainAxisSize: MainAxisSize.min, children: [
+      Text(S.of(context).semester_start_date),
+      StartDateSelectionButton(
+          key: keyButton2,
+          onUpdate: (() => indicatorKey.currentState?.show())),
+    ]);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool useDesktopLayout = PlatformX.isDesktop &&
+            constraints.hasBoundedHeight &&
+            constraints.maxWidth >= 700;
+        final schedule = ScheduleView(
+          scheduleData,
+          style,
+          _table!.now(),
+          _showingTime!.week,
+          tapCallback: _onTapCourse,
+          fillAvailableSpace: useDesktopLayout,
+        );
+
+        return RefreshIndicator(
+          key: indicatorKey,
+          edgeOffset: MediaQuery.of(context).padding.top,
+          color: Theme.of(context).colorScheme.secondary,
+          backgroundColor: Theme.of(context).dialogTheme.backgroundColor,
+          onRefresh: () async {
+            forceLoadFromRemote = true;
+            HapticFeedback.mediumImpact();
+            await refresh();
+          },
+          child: useDesktopLayout
+              ? SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: SizedBox(
+                    height: constraints.maxHeight,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+                      child: Column(children: [
+                        SizedBox(
+                          height: 52,
+                          child: Row(children: [
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: lastUpdated),
+                              ),
+                            ),
+                            SizedBox(width: 240, child: weekSelector),
+                            Expanded(
+                              child: Align(
+                                alignment: Alignment.centerRight,
+                                child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: semesterStartDate),
+                              ),
+                            ),
+                          ]),
+                        ),
+                        Expanded(child: schedule),
+                      ]),
+                    ),
+                  ),
+                )
+              : ListView(
+                  // This ListView is a workaround, so that we can apply a custom scroll physics to it.
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    weekSelector,
+                    schedule,
+                    const SizedBox(height: 10),
+                    Center(child: lastUpdated),
+                    Center(child: semesterStartDate),
+                  ],
+                ),
+        );
       },
-      child: ListView(
-        // This ListView is a workaround, so that we can apply a custom scroll physics to it.
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              PlatformIconButton(
-                icon: const Icon(Icons.chevron_left),
-                onPressed: _showingTime!.week > 0 ? goToPrev : null,
-              ),
-              Text(S.of(context).week(_showingTime!.week)),
-              PlatformIconButton(
-                icon: const Icon(Icons.chevron_right),
-                onPressed:
-                    _showingTime!.week < TimeTable.MAX_WEEK ? goToNext : null,
-              )
-            ],
-          ),
-          ScheduleView(
-            scheduleData,
-            style,
-            _table!.now(),
-            _showingTime!.week,
-            tapCallback: _onTapCourse,
-          ),
-          SizedBox(
-            height: 10,
-          ),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(S.of(context).timetable_last_updated),
-            lastUpdatedTime == null
-                ? Text(S.of(context).timetable_no_last_updated)
-                : Text(DateFormat("yyyy-MM-dd HH:mm").format(lastUpdatedTime))
-          ]),
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            Text(S.of(context).semester_start_date),
-            StartDateSelectionButton(
-                key: keyButton2,
-                onUpdate: (() => indicatorKey.currentState?.show())),
-          ]),
-        ],
-      ),
     );
   }
 }
